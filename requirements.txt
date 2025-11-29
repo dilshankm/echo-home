@@ -1,19 +1,17 @@
 # FastAPI
 fastapi==0.109.0
-uvicorn[standard]==0.27.0
+uvicorn==0.27.0  # Removed [standard] extras - not needed
 pydantic==2.5.3
 python-dotenv==1.0.0
-python-multipart==0.0.6
+# python-multipart==0.0.6  # Only needed for file uploads (not used)
 
-# LangChain & LangGraph (removed - not actually used, we use direct OpenAI)
-# langchain==0.1.0
-# langgraph>=0.0.8
-# langchain-openai==0.0.5
+# LangGraph - Multi-agent orchestration
+langgraph>=0.0.8
 
 # Graph & Vector
 networkx==3.2.1
-sentence-transformers==2.3.1
 faiss-cpu==1.7.4
+# Removed sentence-transformers and PyTorch - using OpenAI embeddings instead!
 
 # Data Processing
 numpy==1.26.3

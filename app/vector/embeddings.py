@@ -1,20 +1,18 @@
-"""Vector embeddings using Sentence Transformers."""
+"""Vector embeddings using OpenAI API (no PyTorch needed!)."""
 
 import numpy as np
 from typing import List, Dict, Any, Optional
 import logging
-from sentence_transformers import SentenceTransformer
-
+import openai
 from app.config import config
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddingModel:
-    """Manages sentence transformer embeddings."""
+    """Manages OpenAI embeddings (no local model needed)."""
     
     _instance = None
-    _model = None
     
     def __new__(cls):
         if cls._instance is None:
@@ -22,23 +20,38 @@ class EmbeddingModel:
         return cls._instance
     
     def __init__(self):
-        if self._model is None:
-            logger.info(f"Loading embedding model: {config.EMBEDDING_MODEL}")
-            self._model = SentenceTransformer(config.EMBEDDING_MODEL)
-            logger.info("Embedding model loaded successfully")
-    
-    @property
-    def model(self) -> SentenceTransformer:
-        """Get the embedding model."""
-        return self._model
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY not set - required for embeddings")
+        try:
+            self.client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
+            logger.info("OpenAI embedding client initialized (using text-embedding-3-small)")
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI client: {e}")
     
     def embed(self, text: str) -> np.ndarray:
-        """Generate embedding for a single text."""
-        return self._model.encode(text, convert_to_numpy=True)
+        """Generate embedding for a single text using OpenAI."""
+        try:
+            response = self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text
+            )
+            return np.array(response.data[0].embedding, dtype=np.float32)
+        except Exception as e:
+            logger.error(f"Error generating embedding: {e}")
+            raise
     
     def embed_batch(self, texts: List[str]) -> np.ndarray:
-        """Generate embeddings for multiple texts."""
-        return self._model.encode(texts, convert_to_numpy=True)
+        """Generate embeddings for multiple texts using OpenAI."""
+        try:
+            response = self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=texts
+            )
+            embeddings = [item.embedding for item in response.data]
+            return np.array(embeddings, dtype=np.float32)
+        except Exception as e:
+            logger.error(f"Error generating batch embeddings: {e}")
+            raise
 
 
 def get_embedding_model() -> EmbeddingModel:

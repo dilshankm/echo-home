@@ -29,8 +29,8 @@ class Config:
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
     TIMEOUT_SECONDS: int = int(os.getenv("TIMEOUT_SECONDS", "30"))
     
-    # Model Configuration
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    # Model Configuration (using OpenAI embeddings, so this is just for reference)
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     
     # GraphRAG Configuration
     VECTOR_SIMILARITY_TOP_K: int = int(os.getenv("VECTOR_SIMILARITY_TOP_K", "10"))
