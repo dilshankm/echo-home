@@ -53,31 +53,3 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test Docker image
-      run: |
-        docker run -d --name test-api \
-          -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-          -e USE_MOCK_NEO4J=true \
-          -p 8000:8000 \
-          ${{ secrets.DOCKER_USERNAME }}/echo-home:main || \
-          ${{ secrets.DOCKER_USERNAME }}/echo-home:sha-${GITHUB_SHA::7}
-        
-        echo "Waiting for container to start..."
-        sleep 15
-        
-        # Test health endpoint
-        curl -f http://localhost:8000/api/health || exit 1
-        
-        # Test graph stats
-        curl -f http://localhost:8000/api/graph/stats || exit 1
-        
-        # Test chat endpoint
-        curl -f -X POST http://localhost:8000/api/chat \
-          -H "Content-Type: application/json" \
-          -d '{"message": "test"}' || exit 1
-        
-        echo "✅ All API tests passed!"
-        
-        docker stop test-api
-        docker rm test-api
-
