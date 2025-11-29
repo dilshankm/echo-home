@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: energy-coach-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - USE_MOCK_NEO4J=true
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # OPTIONAL - only if you implement real Neo4j
+  # neo4j:
+  #   image: neo4j:5.15
+  #   ports:
+  #     - "7474:7474"
+  #     - "7687:7687"
+  #   environment:
+  #     - NEO4J_AUTH=neo4j/energy2024
+  #   volumes:
+  #     - neo4j_data:/data
+
+# volumes:
+#   neo4j_data:
+

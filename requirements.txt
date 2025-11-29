@@ -1,0 +1,32 @@
+# FastAPI
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# LangChain & LangGraph
+langchain==0.1.0
+langgraph>=0.0.8
+langchain-openai==0.0.5
+
+# Graph & Vector
+networkx==3.2.1
+sentence-transformers==2.3.1
+faiss-cpu==1.7.4
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+
+# Optional - only if connecting to real Neo4j Aurora
+# Uncomment when ready to connect to Neo4j:
+# neo4j==5.15.0
+
+# Utilities
+requests==2.31.0
+aiohttp==3.9.1
+
+# OpenAI (for direct API calls)
+openai==1.10.0
+

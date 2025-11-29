@@ -1,0 +1,2 @@
+# Energy Coach GraphRAG Application
+
