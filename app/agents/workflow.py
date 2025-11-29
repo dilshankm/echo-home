@@ -1,16 +1,25 @@
 """LangGraph-based multi-agent workflow orchestrator."""
 
 from __future__ import annotations
-from typing import TypedDict, Dict, Any, List, Annotated
+from typing import TypedDict, Dict, Any, List
 import logging
+
+# Annotated is only available in Python 3.9+, use typing_extensions for 3.8
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
 
 try:
     from langgraph.graph import StateGraph, END
     LANGGRAPH_AVAILABLE = True
-except ImportError:
+except (ImportError, TypeError, SyntaxError) as e:
+    # Python 3.8 compatibility issue - langgraph requires 3.9+
     LANGGRAPH_AVAILABLE = False
     StateGraph = None
     END = None
+    logger = logging.getLogger(__name__)
+    logger.warning(f"LangGraph not available (Python 3.8 compatibility): {e}. Using sequential workflow.")
 
 from app.agents.analyzer import QueryAnalyzer
 from app.agents.retriever import GraphRAGRetriever

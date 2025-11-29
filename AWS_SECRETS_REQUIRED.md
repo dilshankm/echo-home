@@ -18,9 +18,9 @@
 - `LOG_LEVEL` - Logging level - Default: `INFO`
 
 ## Neo4j Configuration (Only if USE_MOCK_NEO4J=false)
-- `NEO4J_URI` - Neo4j connection URI (e.g., `bolt://your-neo4j-instance:7687`)
-- `NEO4J_USERNAME` - Neo4j username (default: `neo4j`)
-- `NEO4J_PASSWORD` - Neo4j password
+- `NEO4J_URI` - Neo4j connection URI: `neo4j+s://cc774f1a.databases.neo4j.io`
+- `NEO4J_USER` - Neo4j username: `neo4j`
+- `NEO4J_PASSWORD` - Neo4j password: `dHhS4kVpj0UmPLLYTjcMoRp7C7bpPPT6KjJnWqfXoBo`
 
 ## ECS Configuration (Optional - defaults provided)
 - `ECS_CLUSTER_NAME` - ECS cluster name - Default: `echo-home-cluster`

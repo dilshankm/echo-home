@@ -17,14 +17,14 @@ faiss-cpu==1.7.4
 numpy==1.26.3
 # pandas==2.1.4  # Only needed if loading from CSV files (optional)
 
-# Optional - only if connecting to real Neo4j Aurora
-# Uncomment when ready to connect to Neo4j:
-# neo4j==5.15.0
+# Neo4j - for real Neo4j connection
+neo4j==5.15.0
 
 # Utilities (removed - not used)
 # requests==2.31.0  # Not used in code
 # aiohttp==3.9.1    # Not used in code
 
 # OpenAI (for direct API calls)
-openai==1.10.0
+openai>=1.12.0,<2.0.0
+httpx>=0.24.0,<1.0.0
 

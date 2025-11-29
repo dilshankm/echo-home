@@ -17,15 +17,17 @@ class ResponseGenerator:
         if not config.OPENAI_API_KEY or config.OPENAI_API_KEY == "sk-your-key-here":
             raise ValueError("OPENAI_API_KEY not set in environment. Please set it in .env file")
         
-        # Set environment variable for OpenAI client
-        import os
-        os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY
-        
-        # Initialize OpenAI client (openai 0.28.1 style)
-        openai.api_key = config.OPENAI_API_KEY
-        self.client = openai
-        
-        self.model = config.LLM_MODEL
+        try:
+            # Initialize OpenAI client (v1.x API style) without proxies
+            self.client = openai.OpenAI(
+                api_key=config.OPENAI_API_KEY,
+                timeout=30.0,
+                max_retries=3
+            )
+            self.model = config.LLM_MODEL
+            logger.info(f"OpenAI client initialized with model: {self.model}")
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI client: {e}")
     
     def generate(
         self,
@@ -51,8 +53,8 @@ class ResponseGenerator:
         )
         
         try:
-            # Call ChatGPT (openai 0.28.1 API style)
-            response = self.client.ChatCompletion.create(
+            # Call ChatGPT (openai v1.x API style)
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {

@@ -13,6 +13,7 @@ from app.config import config
 from app.vector.embeddings import get_embedding_model, create_node_embedding_text
 from app.graph.mock_neo4j import MockNeo4j
 # Neo4jConnector has the same interface as MockNeo4j, so it works here too
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,11 @@ logger = logging.getLogger(__name__)
 class GraphRAGSearch:
     """GraphRAG search engine combining vector similarity and graph traversal."""
     
-    def __init__(self, graph: MockNeo4j):
+    def __init__(self, graph: Union[MockNeo4j, Any]):
         """Initialize GraphRAG search with graph.
         
         Args:
-            graph: MockNeo4j graph instance
+            graph: MockNeo4j or Neo4jConnector instance
         """
         self.graph = graph
         self.embedding_model = get_embedding_model()
@@ -34,12 +35,34 @@ class GraphRAGSearch:
         self._build_index()
     
     def _build_index(self):
-        """Build FAISS index for all graph nodes."""
-        logger.info("Building FAISS index for graph nodes...")
+        """
+        Build FAISS index for all graph nodes.
         
-        # Get all nodes from graph
+        GraphRAG Flow:
+        STEP 1: Get KG structure from Neo4j (get_all_nodes)
+        STEP 2: Create embeddings and build vector index (this method)
+        STEP 3: Vector similarity search (cosine) - search()
+        STEP 4: Graph traversal with Cypher - get_k_hop_subgraph()
+        """
+        logger.info("STEP 2: Building FAISS vector index from KG nodes...")
+        
+        # STEP 1: Get all nodes from graph (works for both MockNeo4j and Neo4jConnector)
+        if hasattr(self.graph, 'nodes_by_id'):
+            # MockNeo4j has nodes_by_id attribute
+            nodes_dict = self.graph.nodes_by_id
+            logger.info(f"Got {len(nodes_dict)} nodes from MockNeo4j")
+        else:
+            # Neo4jConnector - STEP 1: Get KG from Neo4j
+            nodes_dict = self.graph.get_all_nodes()
+            logger.info(f"Got {len(nodes_dict)} nodes from Neo4j KG")
+        
+        if not nodes_dict:
+            logger.warning("No nodes found in graph")
+            return
+        
+        # Get all nodes from graph and create embeddings
         all_nodes = []
-        for node_id, node_data in self.graph.nodes_by_id.items():
+        for node_id, node_data in nodes_dict.items():
             # Get graph context (1-hop neighbors)
             neighbors = self.graph.get_neighbors(node_id)
             neighbor_texts = []
@@ -68,12 +91,15 @@ class GraphRAGSearch:
         self.node_ids = [node_id for node_id, _ in all_nodes]
         self.node_embeddings = embeddings
         
-        # Build FAISS index (L2 distance)
+        # STEP 2: Build FAISS index with cosine similarity
         dimension = embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dimension)
+        # Normalize embeddings for cosine similarity
+        faiss.normalize_L2(embeddings)
+        # Use InnerProduct for cosine similarity (after normalization, dot product = cosine)
+        self.index = faiss.IndexFlatIP(dimension)
         self.index.add(embeddings.astype('float32'))
         
-        logger.info(f"Indexed {len(self.node_ids)} nodes in FAISS")
+        logger.info(f"STEP 2: Indexed {len(self.node_ids)} nodes in FAISS with cosine similarity")
     
     def search(
         self, 
@@ -81,11 +107,13 @@ class GraphRAGSearch:
         k: Optional[int] = None,
         min_score: Optional[float] = None
     ) -> List[Tuple[Dict[str, Any], float]]:
-        """GraphRAG retrieval combining THREE techniques:
+        """
+        STEP 3: Vector Similarity Search (Cosine Similarity)
         
-        1. Vector similarity (semantic matching)
-        2. Graph structure (relationships and paths)
-        3. Personalization (user context)
+        GraphRAG retrieval combining:
+        1. Vector similarity (cosine similarity on embeddings)
+        2. Graph structure (relationships and paths) - done in retrieve_subgraph
+        3. Personalization (user context) - done in retriever agent
         
         Args:
             query: User query text
@@ -93,7 +121,7 @@ class GraphRAGSearch:
             min_score: Minimum similarity score (default from config)
         
         Returns:
-            List of (node_dict, combined_score) tuples
+            List of (node_dict, similarity_score) tuples
         """
         if self.index is None or len(self.node_ids) == 0:
             logger.warning("Index not built, returning empty results")
@@ -102,26 +130,28 @@ class GraphRAGSearch:
         k = k or config.VECTOR_SIMILARITY_TOP_K
         min_score = min_score or config.MIN_SIMILARITY_SCORE
         
-        # STEP 1: Vector Similarity on Graph Nodes
+        # STEP 3: Vector Similarity Search using Cosine Similarity
         query_embedding = self.embedding_model.embed(query)
         query_embedding = query_embedding.reshape(1, -1).astype('float32')
+        # Normalize query embedding for cosine similarity
+        faiss.normalize_L2(query_embedding)
         
         # Get more candidates for re-ranking
         search_k = min(k * 2, len(self.node_ids))
-        distances, indices = self.index.search(query_embedding, search_k)
+        similarities, indices = self.index.search(query_embedding, search_k)
         
         # STEP 2: Graph-Based Re-ranking
         # Combine vector similarity with graph importance
         scored_nodes = []
-        for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
             node_id = self.node_ids[idx]
             node = self.graph.get_node(node_id)
             
             if not node:
                 continue
             
-            # Convert L2 distance to similarity (inverse)
-            vector_similarity = 1.0 / (1.0 + distance)
+            # Cosine similarity is already in range [-1, 1], normalize to [0, 1]
+            vector_similarity = (similarity + 1.0) / 2.0
             
             # Calculate graph centrality
             centrality = self.graph.calculate_centrality(node_id)
@@ -147,9 +177,14 @@ class GraphRAGSearch:
         query: str,
         k: int = 5
     ) -> Dict[str, Any]:
-        """Full GraphRAG retrieval with subgraph extraction and path finding.
+        """
+        Full GraphRAG retrieval pipeline.
         
-        This is the complete GraphRAG pipeline as described in the spec.
+        GraphRAG Flow:
+        STEP 1: Get KG from Neo4j (done in _build_index)
+        STEP 2: Build vector index (done in _build_index)
+        STEP 3: Vector similarity search - cosine similarity (search)
+        STEP 4: Graph traversal with Cypher queries (this method)
         
         Args:
             query: User query
@@ -158,7 +193,7 @@ class GraphRAGSearch:
         Returns:
             Complete GraphRAG result with subgraph and paths
         """
-        # STEP 1: Vector Similarity Search
+        # STEP 3: Vector Similarity Search (Cosine Similarity)
         top_nodes_scores = self.search(query, k=k)
         top_node_ids = [node['id'] for node, _ in top_nodes_scores]
         
@@ -172,21 +207,28 @@ class GraphRAGSearch:
                 'explanation': 'No matching nodes found'
             }
         
-        # STEP 2: Subgraph Extraction
+        logger.info(f"STEP 3: Vector search found {len(top_node_ids)} relevant nodes")
+        
+        # STEP 4: Graph Traversal using Cypher queries
+        # Extract subgraph around matched nodes
+        logger.info(f"STEP 4: Traversing graph with Cypher queries (k-hop: {config.SUBGRAPH_HOPS})...")
         subgraph = self.graph.get_k_hop_subgraph(
             top_node_ids,
             k=config.SUBGRAPH_HOPS
         )
         
-        # STEP 3: Path Finding
+        # STEP 4b: Path Finding with Cypher
         # Find meaningful paths between matched nodes
         paths = []
+        logger.info(f"STEP 4b: Finding paths between {len(top_node_ids)} matched nodes...")
         for i, node1_id in enumerate(top_node_ids):
             for node2_id in top_node_ids[i+1:]:
                 found_paths = self.graph.find_paths(node1_id, node2_id, max_length=4)
                 for path in found_paths:
                     if len(path) <= 4:  # Only short, meaningful paths
                         paths.append(path)
+        
+        logger.info(f"STEP 4: Graph traversal found {len(subgraph.get('nodes', []))} nodes, {len(subgraph.get('edges', []))} edges, {len(paths)} paths")
         
         # STEP 4: Context Serialization
         context_text = self._serialize_subgraph_with_paths(subgraph, paths, top_nodes_scores)

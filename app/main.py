@@ -58,11 +58,16 @@ async def lifespan(app: FastAPI):
             raise ValueError("NEO4J_URI required when USE_MOCK_NEO4J=false")
         
         logger.info(f"Connecting to Neo4j at {config.NEO4J_URI}")
-        graph = Neo4jConnector(
-            uri=config.NEO4J_URI,
-            user=config.NEO4J_USER or "neo4j",
-            password=config.NEO4J_PASSWORD or ""
-        )
+        try:
+            graph = Neo4jConnector(
+                uri=config.NEO4J_URI,
+                user=config.NEO4J_USER or "neo4j",
+                password=config.NEO4J_PASSWORD or ""
+            )
+        except Exception as e:
+            logger.error(f"❌ CRITICAL: Failed to connect to Neo4j: {e}")
+            logger.error("❌ Cannot proceed without Neo4j connection. Check credentials and network.")
+            raise
     
     logger.info("Graph loaded successfully")
     
