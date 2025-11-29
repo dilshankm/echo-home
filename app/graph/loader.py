@@ -34,8 +34,17 @@ def load_from_json(filepath: str) -> Tuple[List[Node], List[Edge]]:
 
 
 def load_from_csv(nodes_csv: str, edges_csv: str) -> Tuple[List[Node], List[Edge]]:
-    """Load graph from CSV files."""
-    import pandas as pd
+    """Load graph from CSV files.
+    
+    Note: Requires pandas to be installed. If not available, this will raise ImportError.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError(
+            "pandas is required for CSV loading. "
+            "Install with: pip install pandas"
+        )
     
     nodes_df = pd.read_csv(nodes_csv)
     edges_df = pd.read_csv(edges_csv)
