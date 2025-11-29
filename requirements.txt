@@ -5,10 +5,10 @@ pydantic==2.5.3
 python-dotenv==1.0.0
 python-multipart==0.0.6
 
-# LangChain & LangGraph
-langchain==0.1.0
-langgraph>=0.0.8
-langchain-openai==0.0.5
+# LangChain & LangGraph (removed - not actually used, we use direct OpenAI)
+# langchain==0.1.0
+# langgraph>=0.0.8
+# langchain-openai==0.0.5
 
 # Graph & Vector
 networkx==3.2.1
