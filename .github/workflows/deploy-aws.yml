@@ -1,0 +1,127 @@
+name: Build, Push & Deploy to AWS Fargate
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/echo-home:latest
+            ${{ secrets.DOCKER_USERNAME }}/echo-home:${{ github.sha }}
+
+      - name: Create ECS task definition
+        env:
+          DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/echo-home:${{ github.sha }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          USE_MOCK_NEO4J: ${{ secrets.USE_MOCK_NEO4J }}
+          NEO4J_URI: ${{ secrets.NEO4J_URI }}
+          NEO4J_USER: ${{ secrets.NEO4J_USER }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          
+          task_definition = {
+              "family": "echo-home-task",
+              "networkMode": "awsvpc",
+              "requiresCompatibilities": ["FARGATE"],
+              "cpu": "512",
+              "memory": "1024",
+              "executionRoleArn": os.environ.get("ECS_TASK_EXECUTION_ROLE_ARN", "arn:aws:iam::223516915321:role/ecsTaskExecutionRole"),
+              "taskRoleArn": os.environ.get("ECS_TASK_ROLE_ARN", "arn:aws:iam::223516915321:role/ecsTaskRole"),
+              "containerDefinitions": [
+                  {
+                      "name": "echo-home-container",
+                      "image": os.environ["DOCKER_IMAGE"],
+                      "essential": True,
+                      "portMappings": [
+                          {
+                              "containerPort": 8000,
+                              "protocol": "tcp"
+                          }
+                      ],
+                      "environment": [
+                          {"name": "OPENAI_API_KEY", "value": os.environ["OPENAI_API_KEY"]},
+                          {"name": "USE_MOCK_NEO4J", "value": os.environ.get("USE_MOCK_NEO4J", "true")},
+                          {"name": "LOG_LEVEL", "value": os.environ.get("LOG_LEVEL", "INFO")}
+                      ],
+                      "logConfiguration": {
+                          "logDriver": "awslogs",
+                          "options": {
+                              "awslogs-group": "/ecs/echo-home",
+                              "awslogs-region": os.environ.get("AWS_REGION", "eu-central-1"),
+                              "awslogs-stream-prefix": "ecs"
+                          }
+                      },
+                      "healthCheck": {
+                          "command": ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"],
+                          "interval": 30,
+                          "timeout": 5,
+                          "retries": 3,
+                          "startPeriod": 60
+                      }
+                  }
+              ]
+          }
+          
+          # Add Neo4j environment variables only if not using mock
+          if os.environ.get("USE_MOCK_NEO4J", "true").lower() != "true":
+              task_definition["containerDefinitions"][0]["environment"].extend([
+                  {"name": "NEO4J_URI", "value": os.environ.get("NEO4J_URI", "")},
+                  {"name": "NEO4J_USER", "value": os.environ.get("NEO4J_USER", "neo4j")},
+                  {"name": "NEO4J_PASSWORD", "value": os.environ.get("NEO4J_PASSWORD", "")}
+              ])
+          
+          with open("task-definition.json", "w", encoding="utf-8") as f:
+              json.dump(task_definition, f, indent=2)
+          PY
+
+      - name: Register ECS task definition
+        id: task-def
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --region ${{ secrets.AWS_REGION || 'eu-central-1' }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task_definition_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Deploy to ECS Fargate
+        run: |
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME || 'demo-cluster' }} \
+            --service ${{ secrets.ECS_SERVICE_NAME || 'demo-service' }} \
+            --task-definition ${{ steps.task-def.outputs.task_definition_arn }} \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION || 'eu-central-1' }}
+
